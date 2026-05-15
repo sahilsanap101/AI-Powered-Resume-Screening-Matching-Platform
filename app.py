@@ -7,7 +7,7 @@ import tempfile
 
 from werkzeug.utils import secure_filename
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from reportlab.lib.pagesizes import A4
@@ -105,97 +105,129 @@ def clean(text):
     return text.strip()
 
 
-# ---------------- JD KEYWORD EXTRACTION ---------------- #
+# ---------------- SKILL EXTRACTION (JD + MANDATORY FIELD) ---------------- #
 
-def extract_keywords(text):
+JD_STOPWORDS = ENGLISH_STOP_WORDS | {
+    "year", "years", "experience", "work", "working", "team",
+    "role", "position", "company", "ability", "strong", "good",
+    "excellent", "preferred", "required", "requirements",
+    "responsibilities", "qualification", "qualifications",
+    "candidate", "candidates", "job", "description", "including",
+    "software", "engineer", "developer", "backend", "hiring",
+    "skills", "skill", "nice", "looking", "join", "etc",
+}
 
-    words = text.split()
-
-    stop_words = {
-
-        # common english
-        "the", "and", "for", "with",
-        "that", "this", "from", "have",
-        "will", "your", "are", "our",
-        "using", "use", "into", "such",
-        "their", "they", "them",
-
-        # recruiter filler words
-        "work", "working", "role",
-        "candidate", "candidates",
-        "development", "systems",
-        "testing", "software",
-        "problem", "solving",
-        "skills", "knowledge",
-        "experience", "applications",
-        "application", "team",
-        "teams", "scalable",
-        "solutions", "design",
-        "developing", "maintaining",
-        "engineer", "engineering",
-        "responsibilities",
-        "developer", "developers",
-        "frontend", "backend",
-        "ability", "strong",
-        "understanding",
-        "participate",
-        "maintain",
-        "modern",
-        "tools",
-        "technologies",
-        "quality",
-        "deliver"
-    }
-
-    keywords = []
-
-    for word in words:
-
-        if (
-            len(word) > 2 and
-            word not in stop_words and
-            not word.isdigit()
-        ):
-
-            keywords.append(word)
-
-    return list(set(keywords))
+JD_SKILL_PATTERNS = [
+    r"(?:experience with|experienced in|proficient in|proficiency in|"
+    r"knowledge of|skills in|skilled in|familiar with|expertise in)\s+"
+    r"([a-z0-9+#./\s]{2,50})",
+    r"(?:must have|should have|nice to have|required skills?)[:\s]+"
+    r"([^\n.]{3,120})",
+]
 
 
-# ---------------- SCORING ---------------- #
+def is_valid_skill(term):
 
-def skill_score(mandatory_skills, resume):
+    if not term or len(term) < 2 or len(term) > 40:
+        return False
 
-    matched_skills = [
+    if term.isdigit() or term in JD_STOPWORDS:
+        return False
 
-        s for s in mandatory_skills
+    return True
 
-        if s in resume
+
+def split_skill_phrase(phrase):
+
+    phrase = clean(phrase)
+
+    phrase = re.sub(
+        r"^(required skills?|mandatory skills?|must have|"
+        r"technical skills?|key skills?)[:\s]+",
+        "",
+        phrase,
+    )
+
+    parts = re.split(r"[,;/|•·]| and ", phrase)
+
+    return [
+        clean(part)
+        for part in parts
+        if is_valid_skill(clean(part))
     ]
 
-    score = (
 
-        len(matched_skills) /
-        len(mandatory_skills)
+def parse_recruiter_skills(skills_input):
 
-        if mandatory_skills else 0
-    )
+    return [
+        clean(skill)
+        for skill in skills_input.split(",")
+        if is_valid_skill(clean(skill))
+    ]
 
-    return score, matched_skills
+
+def extract_skills_from_jd(jd_text):
+
+    text = clean(jd_text)
+    found = set()
+
+    for pattern in JD_SKILL_PATTERNS:
+
+        for match in re.finditer(pattern, text):
+
+            found.update(split_skill_phrase(match.group(1)))
+
+    for line in jd_text.splitlines():
+
+        line = re.sub(r"^[\s•\-*\d.)]+", "", line.strip())
+
+        if line and re.search(r"[,;]", line):
+
+            found.update(split_skill_phrase(line))
+
+    return sorted(found)
 
 
-def keyword_overlap(job, resume):
+def build_mandatory_skills(jd_text, recruiter_skills):
 
-    job_set = set(job.split())
-    res_set = set(resume.split())
+    mandatory = list(dict.fromkeys(recruiter_skills))
 
-    return (
+    for skill in extract_skills_from_jd(jd_text):
 
-        len(job_set & res_set) /
-        len(job_set)
+        if skill in mandatory:
+            continue
 
-        if job_set else 0
-    )
+        if any(skill != kept and skill in kept for kept in mandatory):
+            continue
+
+        if any(
+            kept in skill and kept != skill and len(kept) < len(skill)
+            for kept in mandatory
+        ):
+            continue
+
+        mandatory.append(skill)
+
+    return sorted(mandatory)
+
+
+def match_skills_in_resume(resume_text, mandatory_skills):
+
+    if not mandatory_skills:
+        return 0, [], []
+
+    matched = []
+
+    for skill in mandatory_skills:
+
+        if re.search(rf"\b{re.escape(skill)}\b", resume_text):
+            matched.append(skill)
+
+    score = len(matched) / len(mandatory_skills)
+
+    missing = [s for s in mandatory_skills if s not in matched]
+
+    return score, matched, missing
 
 
 # ---------------- ROUTES ---------------- #
@@ -237,23 +269,23 @@ def match():
             message="❌ Enter a valid job description"
         )
 
-    # recruiter-entered skills
-    recruiter_skills = [
+    recruiter_skills = parse_recruiter_skills(skills_input)
 
-        s.strip().lower()
+    mandatory_skills = build_mandatory_skills(
+        job_desc,
+        recruiter_skills,
+    )
 
-        for s in skills_input.split(",")
+    if not mandatory_skills:
 
-        if s.strip()
-    ]
-
-    # dynamic technical keyword extraction
-    jd_keywords = extract_keywords(job_clean)
-
-    # merge both
-    mandatory_skills = list(set(
-        recruiter_skills + jd_keywords
-    ))
+        return render_template(
+            "index.html",
+            message=(
+                "❌ No skills found. Enter mandatory skills and/or "
+                "list requirements in the job description "
+                "(e.g. Required skills: Python, SQL, Docker)."
+            ),
+        )
 
     candidates = []
 
@@ -314,9 +346,9 @@ def match():
 
             stop_words="english",
 
-            ngram_range=(1, 2),
+            ngram_range=(1, 1),
 
-            min_df=1
+            min_df=1,
         )
 
         vectors = tfidf.fit_transform(corpus)
@@ -334,35 +366,12 @@ def match():
             if tfidf_scores[i] < 0.02:
                 continue
 
-            # skill scoring
-            rule, matched_skills = skill_score(
+            rule, matched_skills, missing_skills = match_skills_in_resume(
+                c["resume_text"],
                 mandatory_skills,
-                c["resume_text"]
             )
 
-            # overlap scoring
-            overlap = keyword_overlap(
-                job_clean,
-                c["resume_text"]
-            )
-
-            # explainability
-            missing_skills = [
-
-                s for s in mandatory_skills
-
-                if s not in c["resume_text"]
-            ]
-
-            # realistic ATS weighting
-            final = (
-
-                0.65 * rule +
-
-                0.25 * tfidf_scores[i] +
-
-                0.10 * overlap
-            )
+            final = 0.75 * rule + 0.25 * tfidf_scores[i]
 
             # normalized score
             final_score = min(
@@ -387,23 +396,11 @@ def match():
                 "missing_skills":
                 missing_skills,
 
-                "tfidf_score":
-                round(
-                    tfidf_scores[i] * 100,
-                    1
-                ),
+                "jd_similarity":
+                round(tfidf_scores[i] * 100, 1),
 
-                "skill_score":
-                round(
-                    rule * 100,
-                    1
-                ),
-
-                "overlap_score":
-                round(
-                    overlap * 100,
-                    1
-                )
+                "skill_match":
+                round(rule * 100, 1),
             })
 
     # ---------------- SORT + RANK ---------------- #
@@ -423,6 +420,9 @@ def match():
 
     results = results[:top_n]
 
+    if results:
+        generate_pdf(results)
+
     return render_template(
 
         "index.html",
@@ -431,69 +431,58 @@ def match():
 
         results=results,
 
-        selected_top_n=top_n
+        mandatory_skills=mandatory_skills,
+
+        selected_top_n=top_n,
     )
 
 
-@app.route("/download_pdf", methods=["POST"])
-def download_pdf():
+def generate_pdf(results):
 
-    shortlisted = request.form.getlist(
-        "shortlisted"
-    )
-
-    pdf = canvas.Canvas(
-        SHORTLIST_PDF,
-        pagesize=A4
-    )
-
+    pdf = canvas.Canvas(SHORTLIST_PDF, pagesize=A4)
     width, height = A4
+    y = height - 50
 
-    pdf.setFont(
-        "Helvetica-Bold",
-        14
-    )
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(50, y, "ATS Resume Ranking Report")
+    y -= 40
+    pdf.setFont("Helvetica", 11)
 
-    pdf.drawString(
-        50,
-        height - 50,
-        "Shortlisted Candidates"
-    )
+    for r in results:
 
-    y = height - 100
-
-    pdf.setFont(
-        "Helvetica",
-        11
-    )
-
-    for idx, entry in enumerate(
-        shortlisted,
-        start=1
-    ):
-
-        name, email = entry.split("||")
-
+        pdf.drawString(50, y, f"Rank #{r['rank']} — {r['name']} ({r['score']}%)")
+        y -= 16
+        pdf.drawString(70, y, f"Email: {r['email']}")
+        y -= 16
         pdf.drawString(
-            50,
-            y,
-            f"{idx}. {name} | {email}"
+            70, y,
+            f"Matched: {', '.join(r['matched_skills']) or 'None'}",
         )
+        y -= 16
+        pdf.drawString(
+            70, y,
+            f"Missing: {', '.join(r['missing_skills']) or 'None'}",
+        )
+        y -= 28
 
-        y -= 20
-
-        if y < 50:
-
+        if y < 80:
             pdf.showPage()
-
             y = height - 50
 
     pdf.save()
 
-    return send_file(
-        SHORTLIST_PDF,
-        as_attachment=True
-    )
+
+@app.route("/download_pdf")
+def download_pdf():
+
+    if not os.path.exists(SHORTLIST_PDF):
+
+        return render_template(
+            "index.html",
+            message="❌ Run matching first to generate the PDF.",
+        )
+
+    return send_file(SHORTLIST_PDF, as_attachment=True)
 
 
 if __name__ == "__main__":
