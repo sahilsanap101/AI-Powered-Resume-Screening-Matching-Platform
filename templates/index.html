@@ -3,93 +3,377 @@
 <head>
     <meta charset="UTF-8">
     <title>AI Resume Matching System</title>
-    <link rel="stylesheet"
-          href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+
+    <!-- Bootstrap + Icons -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
     <style>
-        body { background: #f4f6f9; }
-        .container { margin-top: 40px; }
-        .card { box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        body {
+            background: linear-gradient(135deg, #eef2f7, #f8fbff);
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .container {
+            margin-top: 40px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        }
+
         .card-header {
-            background: #007bff;
+            background: linear-gradient(135deg, #007bff, #0056d2);
             color: white;
-            font-size: 1.3rem;
+            font-size: 1.4rem;
             text-align: center;
             font-weight: 600;
+            border-radius: 12px 12px 0 0;
         }
+
+        textarea {
+            resize: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff, #0056d2);
+            border: none;
+            font-weight: 500;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .score-badge {
+            font-size: 0.9rem;
+            padding: 6px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        .high {
+            background: #28a745;
+            color: white;
+        }
+
+        .medium {
+            background: #ffc107;
+            color: black;
+        }
+
+        .low {
+            background: #dc3545;
+            color: white;
+        }
+
+        .rank {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .table-hover tbody tr:hover {
+            background: #f1f7ff;
+        }
+
+        .upload-box {
+            border: 2px dashed #ccc;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            background: #fafafa;
+        }
+
+        small {
+            line-height: 1.5;
+        }
+
     </style>
 </head>
 
 <body>
 
 <div class="container">
+
+    <!-- HEADER -->
+    <div class="text-center mb-4">
+        <h2>
+            <i class="fas fa-brain"></i>
+            AI Resume Matching System
+        </h2>
+
+        <p class="text-muted">
+            Smart ATS-based candidate ranking
+        </p>
+    </div>
+
+    <!-- FORM CARD -->
     <div class="card">
-        <div class="card-header">AI Resume Matching System</div>
+
+        <div class="card-header">
+            Upload Job & Resumes
+        </div>
+
         <div class="card-body">
 
-            <form method="POST" action="/match" enctype="multipart/form-data">
+            <form method="POST"
+                  action="/match"
+                  enctype="multipart/form-data">
 
+                <!-- JOB DESCRIPTION -->
                 <div class="form-group">
-                    <label>Job Description</label>
-                    <textarea class="form-control" name="job_description" rows="6" required></textarea>
+
+                    <label>
+                        <i class="fas fa-file-alt"></i>
+                        Job Description
+                    </label>
+
+                    <textarea
+                        class="form-control"
+                        name="job_description"
+                        rows="5"
+                        placeholder="Paste job description here..."
+                        required></textarea>
+
                 </div>
 
+                <!-- MANDATORY SKILLS -->
                 <div class="form-group">
-                    <label>Upload Resumes</label>
-                    <input type="file" class="form-control" name="resumes" multiple required>
+
+                    <label>
+                        <i class="fas fa-tools"></i>
+                        Mandatory Skills
+                    </label>
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        name="skills"
+                        placeholder="Python, SQL, Machine Learning"
+                        required
+                    >
+
+                    <small class="text-muted">
+                        Enter skills separated by commas
+                    </small>
+
                 </div>
 
+                <!-- UPLOAD -->
                 <div class="form-group">
-                    <label>Show Top Candidates</label>
-                    <select class="form-control" name="top_n">
+
+                    <label>
+                        <i class="fas fa-upload"></i>
+                        Upload Resumes
+                    </label>
+
+                    <div class="upload-box">
+
+                        <input
+                            type="file"
+                            name="resumes"
+                            multiple
+                            required
+                        >
+
+                        <small class="text-muted d-block mt-2">
+                            PDF, DOCX, TXT supported
+                        </small>
+
+                    </div>
+
+                </div>
+
+                <!-- TOP N -->
+                <div class="form-group">
+
+                    <label>
+                        <i class="fas fa-list"></i>
+                        Show Top Candidates
+                    </label>
+
+                    <select
+                        class="form-control"
+                        name="top_n">
+
                         <option value="10">Top 10</option>
                         <option value="20">Top 20</option>
                         <option value="50">Top 50</option>
+
                     </select>
+
                 </div>
 
-                <button class="btn btn-primary btn-block">Run Resume Matching</button>
+                <!-- BUTTON -->
+                <button class="btn btn-primary btn-block">
+
+                    <i class="fas fa-play"></i>
+                    Run Resume Matching
+
+                </button>
+
             </form>
 
             {% if message %}
-                <div class="alert alert-info mt-4">{{ message }}</div>
+                <div class="alert alert-info mt-4 text-center">
+                    {{ message }}
+                </div>
             {% endif %}
 
-            {% if results %}
-            <form method="POST" action="/download_pdf">
-                <h5 class="mt-4">Shortlisted Candidates (Top {{ selected_top_n }})</h5>
-
-                <table class="table table-bordered mt-2">
-                    <thead class="thead-dark">
-                        <tr>
-                            <th>Select</th>
-                            <th>Candidate Name</th>
-                            <th>ATS Score</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in results %}
-                        <tr>
-                            <td>
-                                <!-- ✅ UPDATED CHECKBOX VALUE -->
-                                <input type="checkbox" name="shortlisted"
-                                       value="{{ r.name }}||{{ r.email }}">
-                            </td>
-                            <td>{{ r.name }}</td>
-                            <td>{{ r.score }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-
-                <button class="btn btn-success">
-                    Download Shortlist PDF
-                </button>
-            </form>
+            {% if mandatory_skills %}
+                <div class="alert alert-secondary mt-3">
+                    <strong>Requirements used for matching:</strong>
+                    {{ mandatory_skills | join(", ") }}
+                </div>
             {% endif %}
 
         </div>
     </div>
+
+    <!-- RESULTS -->
+    {% if results %}
+
+        <div class="card mt-4">
+
+            <div class="card-header">
+
+                <i class="fas fa-trophy"></i>
+                Top {{ selected_top_n }} Candidates
+
+            </div>
+
+            <div class="card-body">
+
+                <table class="table table-hover">
+
+                    <thead class="thead-light">
+
+                        <tr>
+
+                            <th>Select</th>
+                            <th>Rank</th>
+                            <th>Candidate</th>
+                            <th>Email</th>
+                            <th>Score</th>
+
+                            <th>Matched Skills</th>
+                            <th>Breakdown</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                        {% for r in results %}
+
+                        <tr>
+
+                            <td>
+                                <input
+                                    type="checkbox"
+                                    name="shortlisted"
+                                    value="{{ r.name }}||{{ r.email }}"
+                                >
+                            </td>
+
+                            <td class="rank">
+                                #{{ r.rank }}
+                            </td>
+
+                            <td>
+                                {{ r.name }}
+                            </td>
+
+                            <td>
+                                {{ r.email }}
+                            </td>
+
+                            <td>
+
+                                {% if r.score > 70 %}
+
+                                    <span class="score-badge high">
+                                        {{ r.score }}%
+                                    </span>
+
+                                {% elif r.score > 40 %}
+
+                                    <span class="score-badge medium">
+                                        {{ r.score }}%
+                                    </span>
+
+                                {% else %}
+
+                                    <span class="score-badge low">
+                                        {{ r.score }}%
+                                    </span>
+
+                                {% endif %}
+
+                            </td>
+
+                            <!-- MATCHED SKILLS -->
+                            <td>
+
+                                {% if r.matched_skills %}
+
+                                    {{ r.matched_skills | join(", ") }}
+
+                                {% else %}
+
+                                    No Match
+
+                                {% endif %}
+
+                            </td>
+
+                            <!-- BREAKDOWN -->
+                            <td>
+
+                                <small>
+
+                                    JD match:
+                                    {{ r.jd_similarity }}%
+                                    <br>
+
+                                    Skills:
+                                    {{ r.skill_match }}%
+
+                                </small>
+
+                            </td>
+
+                        </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+                <a href="/download_pdf"
+                   class="btn btn-success btn-block mt-3 text-white">
+
+                    <i class="fas fa-download"></i>
+                    Download Shortlist PDF
+
+                </a>
+
+            </div>
+        </div>
+
+    {% endif %}
+
 </div>
 
 </body>
